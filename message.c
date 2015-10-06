@@ -1,14 +1,23 @@
 #include "message.h"
 
-void print_message(message_t *msg) {
-    const char *tmp = (msg->packet.type) ? "ACTUATOR" : "SENSOR";
+void print_register_message(register_message_t *msg) {
+    const char *type = (msg->device_data.type) ? "ACTUATOR" : "SENSOR";
     printf(
-        "Type: %ld\nName: %s\nType: %s\nPID: %d\nValue: %d\nThreshold: %d\n",
+        "Msg Type: %ld\nName: %s\nDevice Type: %s\nPID: %d\nThreshold: %d\n",
         msg->msg_type,
-        msg->packet.name,
-        tmp,
+        msg->device_data.name,
+        type,
+        msg->device_data.pid,
+        msg->device_data.threshold
+    );
+}
+
+
+void print_device_message(device_message_t *msg) {
+    printf(
+        "Msg Type: %ld\nPID: %d\nValue: %d\n",
+        msg->msg_type,
         msg->packet.pid,
-        msg->packet.value,
-        msg->packet.threshold
+        msg->packet.value
     );
 }

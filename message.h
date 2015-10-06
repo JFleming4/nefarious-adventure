@@ -36,8 +36,9 @@ typedef struct {
 typedef struct {
     long int msg_type;
     packet_t packet;
-} device_t;
+} device_message_t;
 
-void print_message(message_t *msg);
+void print_register_message(register_message_t *msg);
+void print_device_message(device_message_t *msg);
 
 #endif
