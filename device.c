@@ -39,7 +39,7 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    if (msgrcv(msgid, (void *)&server_response, sizeof(message_t.packet),
+    if (msgrcv(msgid, (void *)&server_response, sizeof(server_response.packet),
                pid, 0) == -1) {
         fprintf(stderr, "msgrcv failed with error: %d\n", errno);
         exit(EXIT_FAILURE);
@@ -51,9 +51,9 @@ int main(int argc, char *argv[]) {
     }
 
     printf("Sent:\n");
-    print_register_message(&my_data);
+    print_message(&sensor_data);
     printf("Recieved:\n");
-    print_device_message(&server_response);
+    print_message(&server_response);
     
     my_message.msg_type = MESSAGE_KEY;
     my_message.packet.pid = pid;
