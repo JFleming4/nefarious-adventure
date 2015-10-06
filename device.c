@@ -7,6 +7,20 @@
 
 #include "message.h"
 
+void sensor(int pid, int msgid) {
+    message_t sensor_data;
+    
+    sensor_data.msg_type = MESSAGE_KEY;
+    sensor_data.packet.pid = pid;
+    
+    while(1) {
+        sensor_data.packet.value = rand() % 36;
+        send_msg(msgid, (void *)&sensor_data, sizeof(sensor_data.packet), IPC_NOWAIT);
+        printf("Current Value: %d\n", sensor_data.packet.value);
+        sleep(2);
+    }
+}
+
 int main(int argc, char *argv[]) {
     int msgid;
     int pid = getpid();
@@ -45,16 +59,8 @@ int main(int argc, char *argv[]) {
     print_message(&sensor_data);
     printf("Recieved:\n");
     print_message(&server_response);
+    sensor(pid, msgid);
     
-    sensor_data.msg_type = MESSAGE_KEY;
-    sensor_data.packet.pid = pid;
-    
-    while(1) {
-        sensor_data.packet.value = rand() % 36;
-        send_msg(msgid, (void *)&sensor_data, sizeof(sensor_data.packet), IPC_NOWAIT);
-        printf("Current Value: %d\n", sensor_data.packet.value);
-        sleep(2);
-    }
     
     exit(EXIT_SUCCESS);
 }
