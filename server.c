@@ -1,8 +1,13 @@
+#include <ctype.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <errno.h>
+#include <unistd.h>
+#include <sys/msg.h>
+
 #include "message.h"
 
-
-int main()
-{
+int main(void) {
     int running = 1;
     int msgid;
     message_t client_request;
@@ -17,21 +22,19 @@ int main()
     	exit(EXIT_FAILURE);
     }
 
-    sleep(10);
-
     while(running) {
-        if (msgrcv(msgid, (void *)&client_request, BUFFER_SIZE, receive_type, 0) == -1) {
+        if (msgrcv(msgid, (void *)&client_request, sizeof(client_request.packet), receive_type, 0) == -1) {
     	    fprintf(stderr, "msgrcv failed with error: %d\n", errno);
     	    running = 0;
 	    }
     	client_request.msg_type = (long int) client_request.packet.pid;
-    	tmp_char_ptr = client_request.packet.text;
+    	tmp_char_ptr = client_request.packet.name;
     	while(*tmp_char_ptr) {
     	    *tmp_char_ptr = toupper(*tmp_char_ptr);
     	    tmp_char_ptr++;
     	}
     	if (msgsnd(msgid, (void *)&client_request, BUFFER_SIZE, 0) == -1) {
-    	    fprintf(stderr, "msgsnd failed\n");
+    	    fprintf(stderr, "msgsnd failed: %d\n", errno);
     	    exit(EXIT_FAILURE);
     	}
     }
