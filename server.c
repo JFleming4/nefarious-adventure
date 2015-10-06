@@ -3,16 +3,17 @@
 #include <stdio.h>
 #include <errno.h>
 #include <unistd.h>
+#include <signal.h>
 #include <sys/msg.h>
 
 #include "message.h"
 
+#define RECEIVE_TYPE -2L
+
 int main(void) {
     int running = 1;
     int msgid;
-    message_t client_request;
-    char *tmp_char_ptr;
-    long int receive_type = 1;
+    message_t data_received, data_transmition;
 
     // Setup the message queue
     msgid = msgget((key_t) 1234, 0666 | IPC_CREAT);
@@ -22,21 +23,14 @@ int main(void) {
     	exit(EXIT_FAILURE);
     }
 
-    while(running) {
-        if (msgrcv(msgid, (void *)&client_request, sizeof(client_request.packet), receive_type, 0) == -1) {
-    	    fprintf(stderr, "msgrcv failed with error: %d\n", errno);
-    	    running = 0;
-	    }
-    	client_request.msg_type = (long int) client_request.packet.pid;
-    	tmp_char_ptr = client_request.packet.name;
-    	while(*tmp_char_ptr) {
-    	    *tmp_char_ptr = toupper(*tmp_char_ptr);
-    	    tmp_char_ptr++;
-    	}
-    	if (msgsnd(msgid, (void *)&client_request, BUFFER_SIZE, 0) == -1) {
-    	    fprintf(stderr, "msgsnd failed: %d\n", errno);
-    	    exit(EXIT_FAILURE);
-    	}
+    while(1) {
+        receive_msg(msgid, (void *)&data_received, sizeof(data_received.packet), RECEIVE_TYPE, 0);
+        
+    	data_transmition.msg_type = (long int) data_received.packet.pid;
+        data_transmition.packet.pid = getpid();
+        data_transmition.packet.value = 1;
+    	
+    	send_msg(msgid, (void *)&data_transmition, sizeof(data_transmition.packet), 0);
     }
 
     exit(EXIT_SUCCESS);

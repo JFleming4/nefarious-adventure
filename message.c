@@ -12,3 +12,17 @@ void print_message(message_t *msg) {
         msg->packet.threshold
     );
 }
+
+void send_msg(int msgid, void *msg, size_t size, int block) {
+    if (msgsnd(msgid, msg, size, block) == -1) {
+        fprintf(stderr, "msgsnd failed: %d\n", errno);
+        exit(EXIT_FAILURE);
+    }
+}
+
+void receive_msg(int msgid, void *msg, size_t size, long int receive_type, int block) {
+    if (msgrcv(msgid, msg, size, receive_type, block) == -1) {
+        fprintf(stderr, "msgrcv failed with error: %d\n", errno);
+        exit(EXIT_FAILURE);
+    }
+}

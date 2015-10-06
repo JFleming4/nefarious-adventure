@@ -3,6 +3,8 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <errno.h>
+#include <sys/msg.h>
 
 #define BUFFER_SIZE 20
 
@@ -29,5 +31,7 @@ typedef struct {
 } message_t;
 
 void print_message(message_t *msg);
+void send_msg(int msgid, void *msg, size_t size, int block);
+void receive_msg(int msgid, void *msg, size_t size, long int receive_type, int block);
 
 #endif
