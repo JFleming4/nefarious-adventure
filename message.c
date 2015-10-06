@@ -1,12 +1,12 @@
 #include "message.h"
 
 void print_message(message_t *msg) {
-    const char *tmp = (msg->packet.type) ? "ACTUATOR" : "SENSOR";
+    const char *type = (msg->packet.type) ? "ACTUATOR" : "SENSOR";
     printf(
-        "Type: %ld\nName: %s\nType: %s\nPID: %d\nValue: %d\nThreshold: %d\n",
+        "Msg Type: %ld\nName: %s\nDevice Type: %s\nPID: %d\nValue: %d\nThreshold: %d\n",
         msg->msg_type,
         msg->packet.name,
-        tmp,
+        type,
         msg->packet.pid,
         msg->packet.value,
         msg->packet.threshold

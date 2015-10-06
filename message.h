@@ -12,31 +12,21 @@
 #define SENSOR 0
 #define ACTUATOR 1
 
-// The Data used to Register a device with the controller
-typedef struct {
-    pid_t pid;
-    int type;
-    int threshold;
-    char name[BUFFER_SIZE];
-} device_data_t;
 
 // The standard packet sent in message from the devices and controller
 typedef struct {
     pid_t pid;
     int value;
+    int type;
+    int threshold;
+    char name[BUFFER_SIZE];
 } packet_t;
-
-// The registration message sent by the devices
-typedef struct {
-    long int msg_type;
-    device_data_t device_data;
-} register_message_t;
 
 // The standard message sent from the devices and controller
 typedef struct {
     long int msg_type;
     packet_t packet;
-} device_t;
+} message_t;
 
 void print_message(message_t *msg);
 
