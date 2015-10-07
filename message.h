@@ -8,8 +8,11 @@
 
 #define BUFFER_SIZE 20
 
+#define QUEUE_KEY 1234
+
 #define MESSAGE_KEY 1
 #define REGISTER_KEY 2
+#define THRESHOLD_CROSS_KEY 3
 
 #define SENSOR 0
 #define ACTUATOR 1
