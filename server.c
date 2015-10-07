@@ -14,7 +14,6 @@ int main(void) {
     int running = 1;
     int msgid;
     message_t data_received, data_transmition;
-
     // Setup the message queue
     msgid = msgget((key_t) 1234, 0666 | IPC_CREAT);
 
@@ -24,7 +23,9 @@ int main(void) {
     }
 
     while(1) {
-        receive_msg(msgid, (void *)&data_received, sizeof(data_received.packet), RECEIVE_TYPE, 0);
+        receive_msg(msgid, (void *)&data_received, sizeof(data_received.packet), RECEIVE_TYPE, 0);  
+        
+        printf("Received message of type: %d, from pid: %d\n", data_received.msg_type, data_received.packet.pid);
         
     	data_transmition.msg_type = (long int) data_received.packet.pid;
         data_transmition.packet.pid = getpid();
