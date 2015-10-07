@@ -32,6 +32,8 @@ void actuator(int pid, int msgid, char *name) {
         receive_msg(msgid, (void *)&sensor_data, sizeof(sensor_data.packet), (long int) pid,
         0); // wait for message from server
         printf("%s was turned on at pid: %d\n", name, pid);   // print a message to console
+
+        sensor_data.msg_type = MESSAGE_KEY;
         sensor_data.packet.pid = pid;   // set pid
         sensor_data.packet.value = 1;   // set value to true
         sensor_data.packet.type = ACTUATOR; // set type to actuator
