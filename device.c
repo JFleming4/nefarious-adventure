@@ -19,7 +19,7 @@ void sensor(int pid, int msgid) {
     while(1) {
         sensor_data.packet.value = rand() % 36; // Generate a random value 0 - 35
         send_msg(msgid, (void *)&sensor_data, sizeof(sensor_data.packet), IPC_NOWAIT); //send to server
-        printf("Current Value: %d\n", sensor_data.packet.value); // print to console
+        printf("Current Value: %d, from pid: %d\n", sensor_data.packet.value, pid); // print to console
         sleep(2);   //wait 2 seconds
     }
 }
@@ -31,7 +31,8 @@ void actuator(int pid, int msgid, char *name) {
     while(1) {
         receive_msg(msgid, (void *)&sensor_data, sizeof(sensor_data.packet), (long int) pid,
         0); // wait for message from server
-        printf("%s was turned on", name);   // print a message to console
+        printf("%s was turned on at pid: %d\n", name, pid);   // print a message to console
+        sensor_data.msg_type = MESSAGE_KEY;
         sensor_data.packet.pid = pid;   // set pid
         sensor_data.packet.value = 1;   // set value to true
         sensor_data.packet.type = ACTUATOR; // set type to actuator
