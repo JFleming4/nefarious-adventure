@@ -16,6 +16,7 @@ struct device {
     pid_t pid;
     int type;
     int value;
+    int threshold_crossed;
     int threshold;
     char name[BUFFER_SIZE];
     char has_partner;
@@ -28,6 +29,10 @@ static pid_t child_pid;
 static int msgid, next_device;
 static device_t devices[MAX_DEVICES];
 
+
+/*
+ * Signal Handlers
+ */
 
 void cleanup_parent(int sig) {
     kill(child_pid, SIGTERM);
@@ -44,13 +49,14 @@ void cleanup_child(int sig) {
 
 void threshold_crossing(int sig) {
     message_t msg;
-    receive_msg(msgid, (void *)&msg, sizeof(msg.packet), THRESHOLD_CROSS_KEY, IPC_NOWAIT);
+    receive_msg(msgid, (void *)&msg, sizeof(packet_t), THRESHOLD_CROSS_KEY, IPC_NOWAIT);
     printf(
-        "Sensor %d crossed threshold %d with a value of %d and actuator %d was turned on.\n",
+        "Sensor %d crossed threshold %d with a value of %d and actuator %d was turned %s.\n",
         msg.packet.pid,
         msg.packet.threshold,
         msg.packet.value,
-        msg.packet.type
+        msg.packet.type,
+        msg.packet.name
     );
 }
 
@@ -67,13 +73,24 @@ void print_device(device_t *device) {
 }
 // Register a device with the controller by adding it to the devices array.
 void register_device(message_t *msg, device_t devices[MAX_DEVICES], int next_device) {
+    message_t transmit;
     device_t *device = &devices[next_device];
 
     device->pid = (long int) msg->packet.pid;
     device->type = msg->packet.type;
     device->threshold = msg->packet.threshold;
+    device->threshold_crossed = 0;
     strcpy(device->name, msg->packet.name);
-    printf("msg name: %s\n device name: %s\n", msg->packet.name, device->name);
+    printf("msg name: %s\ndevice name: %s\n", msg->packet.name, device->name);
+
+    // Setup the data to send back to acknowledge the registration.
+    strcpy(transmit.packet.name, device->name);
+    transmit.packet.threshold = device->threshold;
+    transmit.packet.type = device->type;
+    transmit.msg_type = (long int) device->pid;
+    transmit.packet.pid = getpid();
+    transmit.packet.value = 1;
+
     // If there are already devices being tracked, loop through all of them.
     // If there is a device of the opposite type without a partner then make
     // them each others partner.
@@ -85,17 +102,14 @@ void register_device(message_t *msg, device_t devices[MAX_DEVICES], int next_dev
                 devices[i].partner = device;
                 device->has_partner = 1;
                 device->partner = &devices[i];
-                
+
                 printf("1 Device: %d, is partnered with: %d\n", device->pid, device->partner -> pid);
-                print_device(device);
-                
+
                 printf("2 Device: %d, is partnered with: %d\n", devices[i].pid, devices[i].partner -> pid);
-                print_device(&devices[i]);
-                return;
             }
         }
     }
-
+    send_msg(msgid, (void *)&transmit, sizeof(packet_t), 0);
 }
 
 // Returns the index of the device that matches the sender of the message.
@@ -109,46 +123,74 @@ int find_device(message_t *msg, device_t devices[MAX_DEVICES]) {
     return -1;
 }
 
-void cpy_device_msg(message_t *msg, device_t *device) {
-    strcpy(msg->packet.name, device->name);
-    msg->packet.threshold = device->threshold;
-    msg->packet.type = device->type;
+void actuator(message_t *msg, device_t *device) {
+    message_t transmit;
+    device->value = msg->packet.value;
+
+    if (!msg->packet.value) {
+        fprintf(stderr, "Actuator %s encountered an error.\n", device->name);
+    }
+
+    // Transfer the sensor data to the msg and populate type with the
+    // actuator pid, then send a special message to the parent and
+    // signal to inform it that it's there.
+    strcpy(transmit.packet.name, msg->packet.name);
+    transmit.packet.threshold = device->partner->threshold;
+    transmit.packet.type = device->pid;
+    transmit.msg_type = THRESHOLD_CROSS_KEY;
+    transmit.packet.pid = device->partner->pid;
+    transmit.packet.value = device->partner->value;
+    send_msg(msgid, (void *)&transmit, sizeof(packet_t), 0);
+    kill(getppid(), SIGUSR1);
+}
+
+void sensor(message_t *received, device_t *device) {
+    message_t transmit;
+    // Save the last piece of sensor data.
+    device->value = received->packet.value;
+
+    if (received->packet.value < device->threshold) {
+        // Detect if you fell below the threshold continue if you didn't
+        if (!device->threshold_crossed) { return; }
+
+        device->threshold_crossed = 0;
+        transmit.packet.value = 0;
+    } else {
+        // Detect if you rose above the threshold continue if you didn't
+        if (device->threshold_crossed) { return; }
+
+        device->threshold_crossed = 1;
+        transmit.packet.value = 1;
+    }
+
+    transmit.msg_type = (long int) device->partner->pid;
+    send_msg(msgid, (void *)&transmit, sizeof(packet_t), 0);
 }
 
 void child(void) {
-    message_t data_received, data_transmition;
+    message_t data_received;
     device_t *current_device; //, devices[MAX_DEVICES];
     next_device = 0;
     int current_index;
     struct sigaction cleanup;
-    
+
     cleanup.sa_handler = cleanup_child;
     sigemptyset(&cleanup.sa_mask);
     cleanup.sa_flags = 0;
-    
+
     sigaction(SIGTERM, &cleanup, 0);
 
     for (int i = 0; i < MAX_DEVICES; i++) {
         devices[i].has_partner = 0;
     }
 
-    // The Transmitted data will always be from here.
-    data_transmition.packet.pid = getpid();
-
     while(1) {
-        
-        receive_msg(msgid, (void *)&data_received, sizeof(data_received.packet), RECEIVE_TYPE, 0);
+
+        receive_msg(msgid, (void *)&data_received, sizeof(packet_t), RECEIVE_TYPE, 0);
 
         // Registration vs Message Section
         if (data_received.msg_type == REGISTER_KEY) {
-            register_device(&data_received, devices, next_device);
-            cpy_device_msg(&data_transmition, &devices[next_device]);
-            data_transmition.msg_type = (long int) data_received.packet.pid;
-            data_transmition.packet.pid = getpid();
-            data_transmition.packet.value = 1;
-            
-            send_msg(msgid, (void *)&data_transmition, sizeof(data_transmition.packet), 0);
-            next_device++;
+            register_device(&data_received, devices, next_device++);
             continue;
         } else if (data_received.msg_type == MESSAGE_KEY) {
             current_index = find_device(&data_received, devices);
@@ -157,66 +199,33 @@ void child(void) {
             if (current_index == -1) { continue; }
             current_device = &devices[current_index];
         }
+        // If the device dosen't have a partner then skip to the next message.
+        if (!current_device->has_partner) { continue; }
 
+        // Message Recieved From Device
         if (data_received.packet.type) { // Actuator
-            if (!data_received.packet.value) {
-                fprintf(stderr, "Actuator %s encountered an error.\n", current_device->name);
-            }
-            printf("Got a message from an actuator\n");
-            // Transfer the sensor data to the msg and populate type with the actuator
-            // pid, then send a special message to the parent and signal to inform it
-            // that it's there.
-            cpy_device_msg(&data_transmition, current_device->partner);
-            data_transmition.packet.type = current_device->pid;
-            data_transmition.msg_type = THRESHOLD_CROSS_KEY;
-            data_transmition.packet.pid = current_device->partner->pid;
-            data_transmition.packet.value = current_device->partner->value;
-            send_msg(msgid, (void *)&data_transmition, sizeof(data_transmition.packet), 0);
-            kill(getppid(), SIGUSR1);
-            
-            // Nothing else to do if you recieve a message from an actuator.
-            continue;
+            actuator(&data_received, current_device);
         } else { // Sensor
-            // Save the last piece of sensor data.
-            current_device->value = data_received.packet.value;
-            
-            // If the threshold hasn't been crossed or the device dosen't have
-            // a partner then skip to the next message.
-            if (data_received.packet.value < current_device->threshold) {
-                printf("Received message from sensor pid: %d\n", data_received.packet.pid);
-                continue;
-            } else if (!current_device->has_partner) { continue; }
-            
-            // Send the data to the sensors partner.
-            cpy_device_msg(&data_transmition, current_device);
-            data_transmition.msg_type = (long int) current_device->partner->pid;
-            data_transmition.packet.value = 1;
+            sensor(&data_received, current_device);
         }
-
-        printf("Received:");
-        print_message(&data_received);
-        printf("Sent:");
-        print_message(&data_transmition);
-
-    	send_msg(msgid, (void *)&data_transmition, sizeof(data_transmition.packet), 0);
     }
 }
 
 void parent(void) {
     struct sigaction cleanup, msg_received;
-    
+
     cleanup.sa_handler = cleanup_parent;
     sigemptyset(&cleanup.sa_mask);
     cleanup.sa_flags = 0;
-    
+
     msg_received.sa_handler = threshold_crossing;
     sigemptyset(&msg_received.sa_mask);
     msg_received.sa_flags = 0;
-    
+
     sigaction(SIGTERM, &cleanup, 0);
     sigaction(SIGINT, &cleanup, 0);
     sigaction(SIGUSR1, &msg_received, 0);
-    
+
     while(1);
 
     exit(EXIT_SUCCESS);
@@ -230,9 +239,9 @@ int main(void) {
     	fprintf(stderr, "msgget failed with error: %d\n", errno);
     	exit(EXIT_FAILURE);
     }
-    
+
     child_pid = fork();
-    
+
     switch(child_pid) {
     case -1:
         perror("fork failed");
