@@ -1,6 +1,16 @@
 # Assignment 1
 
+@author Derek Stride 100955939
+@author Justin Fleming 100934170
+
 ## Execution
+
+You can run a sample simulation with the following commands.
+
+```bash
+make
+./main
+```
 
 The Makefile creates 3 executables, device, controller, and cloud.
 
@@ -19,7 +29,11 @@ The sensors generate a random number from 0 - 49 so make sure your threshold is 
 
 ## CHANGELOG
 
-### v 0.3.1
+### v1.0.0
+
+Added Main Function to run a simulation.
+
+### v0.3.1
 
 Signals propagate due to sweet sciency magic.
 
