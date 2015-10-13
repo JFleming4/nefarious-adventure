@@ -18,33 +18,39 @@
 static pid_t child_pid;
 static pid_t controllers[MAX_DEVICES];
 static int next_device;
+static int can_exit;
 
-void cleanup_parent(int sig) {
+void cleanup_parent(void) {
     unlink(CLOUD_FIFO);
     unlink(TO_PARENT);
     unlink(FROM_PARENT);
-    kill(child_pid, SIGTERM);
-    exit(EXIT_SUCCESS);
-}
-
-void cleanup_child(int sig) {
-    for (int i = 0; i < next_device; i++) {
-        kill(controllers[i], SIGTERM);
+    if (kill(child_pid, SIGTERM) == -1) {
+        printf("Target %d survived: %d\n", child_pid, errno);
     }
     exit(EXIT_SUCCESS);
 }
 
+void cleanup_child(void) {
+    for (int i = 0; i < next_device; i++) {
+        if (kill(controllers[i], SIGTERM) == -1) {
+            printf("Target %d survived: %d\n", controllers[i], errno);
+        }
+    }
+    exit(EXIT_SUCCESS);
+}
+
+void cleanup_cloud(int sig) {
+    can_exit = 1;
+}
+
 void child(void) {
     event_message_t data_received;
-    struct sigaction cleanup;
 
-    cleanup.sa_handler = cleanup_child;
-    sigemptyset(&cleanup.sa_mask);
-    cleanup.sa_flags = 0;
-
-    sigaction(SIGTERM, &cleanup, 0);
 
     while (1) {
+        if (can_exit) {
+            cleanup_child();
+        }
         receive_fifo(&data_received, CLOUD_FIFO, O_RDONLY, sizeof(event_message_t));
 
         if (data_received.msg_type == REGISTER_KEY) {
@@ -65,16 +71,12 @@ void child(void) {
 }
 
 void parent(void) {
-    struct sigaction cleanup;
 
-    cleanup.sa_handler = cleanup_parent;
-    sigemptyset(&cleanup.sa_mask);
-    cleanup.sa_flags = 0;
-
-    sigaction(SIGTERM, &cleanup, 0);
-    sigaction(SIGINT, &cleanup, 0);
-
-    while(1);
+    while(1) {
+        if (can_exit) {
+            cleanup_parent();
+        }
+    }
 }
 
 void make_fifo(const char *fifo) {
@@ -88,6 +90,16 @@ void make_fifo(const char *fifo) {
 
 int main(int argc, char *argv[]) {
     next_device = 0;
+    can_exit = 0;
+
+    struct sigaction cleanup;
+
+    cleanup.sa_handler = cleanup_cloud;
+    sigemptyset(&cleanup.sa_mask);
+    cleanup.sa_flags = 0;
+
+    sigaction(SIGTERM, &cleanup, 0);
+    sigaction(SIGINT, &cleanup, 0);
 
     make_fifo(CLOUD_FIFO);
     make_fifo(TO_PARENT);

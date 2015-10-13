@@ -19,6 +19,10 @@ The sensors generate a random number from 0 - 49 so make sure your threshold is 
 
 ## CHANGELOG
 
+### v 0.3.1
+
+Signals propagate due to sweet sciency magic.
+
 ### v0.3.0
 
 + cloud.c
