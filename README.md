@@ -19,7 +19,7 @@ The sensors generate a random number from 0 - 49 so make sure your threshold is 
 
 ## CHANGELOG
 
-### v0.2.0
+### v0.3.0
 
 + cloud.c
 + server.c -> controller.c
