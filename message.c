@@ -53,7 +53,7 @@ void receive_msg(int msgid, void *msg, size_t size, long int receive_type, int b
 void send_fifo(void *msg, const char *fifo, int mode, size_t size) {
     int pipe, res;
     int bytes_sent = 0;
-    if (access(fifo, mode) == -1) {
+    if (access(fifo, F_OK) == -1) {
         fprintf(stderr, "Could not find %s\n", fifo);
     } else {
         pipe = open(fifo, mode);
