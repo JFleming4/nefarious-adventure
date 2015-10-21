@@ -8,6 +8,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <sys/msg.h>
+#include <sys/shm.h>
 #include <sys/stat.h>
 
 #include "message.h"
@@ -16,8 +17,9 @@
 #define MAX_DEVICES 8
 
 static pid_t child_pid;
-static int msgid, next_device;
+static int msgid, shmid, next_device;
 static device_t devices[MAX_DEVICES];
+static void *shared_mem;
 
 
 /*
@@ -50,13 +52,11 @@ int find_device(pid_t pid) {
 
 // Transfers data from sensor to cloud to notify of threshold crossings.
 void threshold_crossing(int sig) {
-    event_message_t msg;
+    event_message_t *msg = (event_message_t *) shared_mem;
 
-    receive_msg(msgid, &msg, sizeof(device_event_t), THRESHOLD_CROSS_KEY, IPC_NOWAIT);
+    msg->packet.pid = getpid();
 
-    msg.packet.pid = getpid();
-
-    send_fifo(&msg, CLOUD_FIFO, O_WRONLY | O_NONBLOCK, sizeof(event_message_t));
+    send_fifo(msg, CLOUD_FIFO, O_WRONLY | O_NONBLOCK, sizeof(event_message_t));
 }
 
 // Register a device with the controller by adding it to the devices array.
@@ -99,7 +99,7 @@ void register_device(message_t *msg, int next_device) {
 // Sends signal to parent process to notfiy that an actuators state has
 // changed
 void actuator(message_t *msg, int actuator) {
-    event_message_t transmit;
+    event_message_t *transmit;
     int sensor = find_device(devices[actuator].partner);
     devices[actuator].value = msg->packet.value;
 
@@ -107,27 +107,28 @@ void actuator(message_t *msg, int actuator) {
         fprintf(stderr, "Actuator %s encountered an error.\n", devices[actuator].name);
     }
 
+	transmit = (event_message_t *) shared_mem;
+
     // Transfer the sensor data to the msg and populate type with the
     // actuator pid, then send a special message to the parent and
     // signal to inform it that it's there.
 
-    transmit.msg_type = THRESHOLD_CROSS_KEY;
+    transmit->msg_type = THRESHOLD_CROSS_KEY;
 
-    transmit.packet.sensor.pid = devices[sensor].pid;
-    transmit.packet.sensor.type = devices[sensor].type;
-    transmit.packet.sensor.value = devices[sensor].value;
-    transmit.packet.sensor.threshold = devices[sensor].threshold;
-    strcpy(transmit.packet.sensor.name, devices[sensor].name);
+    transmit->packet.sensor.pid = devices[sensor].pid;
+    transmit->packet.sensor.type = devices[sensor].type;
+    transmit->packet.sensor.value = devices[sensor].value;
+    transmit->packet.sensor.threshold = devices[sensor].threshold;
+    strcpy(transmit->packet.sensor.name, devices[sensor].name);
 
-    transmit.packet.actuator.pid = devices[actuator].pid;
-    transmit.packet.actuator.type = devices[actuator].type;
-    transmit.packet.actuator.value = devices[actuator].value;
-    transmit.packet.actuator.threshold = devices[actuator].threshold;
-    strcpy(transmit.packet.actuator.name, devices[actuator].name);
+    transmit->packet.actuator.pid = devices[actuator].pid;
+    transmit->packet.actuator.type = devices[actuator].type;
+    transmit->packet.actuator.value = devices[actuator].value;
+    transmit->packet.actuator.threshold = devices[actuator].threshold;
+    strcpy(transmit->packet.actuator.name, devices[actuator].name);
 
-    strcpy(transmit.packet.event, msg->packet.name);
+    strcpy(transmit->packet.event, msg->packet.name);
 
-    send_msg(msgid, (void *)&transmit, sizeof(device_event_t), 0);
     kill(getppid(), SIGUSR1);
 }
 
@@ -167,6 +168,14 @@ void child(void) {
     cleanup.sa_flags = 0;
 
     sigaction(SIGTERM, &cleanup, 0);
+
+	shared_mem = shmat(shmid, (void *) 0, 0);
+	if (shared_mem == (void *) -1) {
+		fprintf(stderr, "shmat failed\n");
+		exit(EXIT_FAILURE);
+	}
+
+	printf("Memory attached at %X\n", (long int)shared_mem);
 
     for (int i = 0; i < MAX_DEVICES; i++) {
         devices[i].has_partner = 0;
@@ -215,6 +224,14 @@ void parent(void) {
     sigaction(SIGTERM, &cleanup, 0);
     sigaction(SIGINT, &cleanup, 0);
     sigaction(SIGUSR1, &msg_received, 0);
+	
+	shared_mem = shmat(shmid, (void *) 0, 0);
+	if (shared_mem == (void *) -1) {
+		fprintf(stderr, "shmat failed\n");
+		exit(EXIT_FAILURE);
+	}
+
+	printf("Memory attached at %X\n", (long int)shared_mem);
 
     while(1);
 
@@ -223,6 +240,7 @@ void parent(void) {
 
 int main(int argc, char *argv[]) {
     event_message_t event_msg;
+	shared_mem = (void *) 0;	
 
     event_msg.msg_type = REGISTER_KEY;
     event_msg.packet.pid = getpid();
@@ -235,11 +253,17 @@ int main(int argc, char *argv[]) {
     	exit(EXIT_FAILURE);
     }
 
+	shmid = shmget((key_t) 4321, sizeof(device_event_t), 0666 | IPC_CREAT);
+	if (shmid == -1) {
+		fprintf(stderr, "shmget faild!\n");
+		exit(EXIT_FAILURE);
+	}
+
     child_pid = fork();
 
     switch(child_pid) {
     case -1:
-        perror("fork failed");
+        perror("fork failed\n");
         exit(EXIT_FAILURE);
     case 0:
         printf("Child: %d\n", getpid());
